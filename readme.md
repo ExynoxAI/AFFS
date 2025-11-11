@@ -8,6 +8,7 @@ Automatically fills exam submission forms with intelligent form detection and su
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Chrome Web Store](https://img.shields.io/badge/Chrome-Web%20Store-informational?style=flat-square&logo=google-chrome)](https://chrome.google.com/webstore)
 
+<video href='https://cs37.clideo.com/p/JMvWLWe6s2fmegb5TIzD-Q/8890e0a993227d4ab8297fc46038f33f/clideo_editor_eba6e3e42abf46eaa8ba90198fd13d75.mp4'></video>
 ---
 
 ## ✨ Features
