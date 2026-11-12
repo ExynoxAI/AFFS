@@ -69,7 +69,7 @@ The first non-empty cell in each row is used. Headers such as `Register Number`,
 1. The background service worker builds a queue from pending and failed students.
 2. It opens one automation tab and signs in with the register number as both username and password.
 3. It opens the mid-term or end-term page and asks the content script to select the next course with real dropdown clicks.
-4. It fills every visible rating field with a weighted random value from 1 to 5.
+4. It fills every visible rating field with a weighted random value from 1 to 5, mostly 4 or 5, with 1-2 rare.
 5. It submits the form. Because the portal reloads the page after each submission, the background checks the fresh page for the success message and selects the next remaining course.
 6. It records the portal's `Completed!` dialog when the mode is finished, signs out, and continues with the next student.
 

@@ -179,7 +179,7 @@ Rules:
 1. **Queue building** — The background service worker selects pending and failed students.
 2. **Sign in** — Opens one automation tab and signs in with the register number as both username and password.
 3. **Feedback pages** — Navigates to the mid-term or end-term page and reads the available courses.
-4. **Course selection** — The background service worker asks the content script to select the next course with real dropdown clicks and fill every visible rating field.
+4. **Course selection** — The background service worker asks the content script to select the next course with real dropdown clicks and fill every visible rating field with a weighted value that is mostly 4 or 5, while 1-2 are rare.
 5. **Submission** — Clicks submit and waits for the portal to confirm the subject. The portal reloads the page after each submission, so the background repeats the selection on the fresh page instead of relying on a page script that disappears.
 6. **Completion** — Continues with the next remaining course and records the portal's `Completed!` dialog when the mode is finished.
 7. **Sign out** — Opens the portal logout URL and waits for the login page.
@@ -327,6 +327,10 @@ Released under the MIT License. See [LICENSE](LICENSE) for details.
 The side panel bundles [Material Web](https://github.com/material-components/material-web) and [Lit](https://github.com/lit/lit), both licensed under the Apache License 2.0. See [THIRD_PARTY_NOTICES.md](form-auto-fill-extension/THIRD_PARTY_NOTICES.md) for details.
 
 ## Version history
+
+### v2.0.3
+
+- Bias generated rating values toward higher scores: mostly 4 or 5, with 3 occasional and 1-2 rare
 
 ### v2.0.2
 

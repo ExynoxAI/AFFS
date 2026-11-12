@@ -59,12 +59,14 @@
     input.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
+  // Ratings are mostly 4 or 5, with 3 occasional and 1-2 rare.
+  // 5: 44%, 4: 36%, 3: 12%, 2: 5%, 1: 3%.
   function biasedRandom() {
     const value = Math.random();
-    if (value < 0.15) return 1;
-    if (value < 0.3) return 2;
-    if (value < 0.55) return 3;
-    if (value < 0.8) return 4;
+    if (value < 0.03) return 1;
+    if (value < 0.08) return 2;
+    if (value < 0.2) return 3;
+    if (value < 0.56) return 4;
     return 5;
   }
 
