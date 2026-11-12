@@ -1,6 +1,6 @@
 # AFFS — Auto Form Fill
 
-A Manifest V3 Chrome extension for the HyperDyn feedback portal at `http://192.168.10.72:8080/feedback/`. It imports a CSV of register numbers and submits mid-term and end-term feedback for each student in sequence.
+A Manifest V3 Chrome extension for the HyperDyn feedback portal. The default portal is `http://192.168.10.72:8080/feedback/`, and a custom `/feedback` URL can be saved from the side panel. It imports a CSV of register numbers and submits mid-term and end-term feedback for each student in sequence.
 
 The side panel uses [Material Web](https://material-web.dev/) components and follows the browser's light or dark theme through system colors.
 
@@ -11,6 +11,8 @@ The side panel uses [Material Web](https://material-web.dev/) components and fol
 - Mid-term and end-term modes, individually selectable
 - Dry-run mode for checking the workflow without submitting
 - Course-by-course submission with completion detection
+- Custom portal URL with persisted settings and automatic content-script registration
+- Reload-safe processing: the background service worker selects the next subject after the portal reloads the page
 - Per-student progress, run counters, and an activity log
 - Material Web buttons, checkboxes, lists, and linear progress
 - No external requests; all processing stays in the browser
@@ -18,7 +20,7 @@ The side panel uses [Material Web](https://material-web.dev/) components and fol
 ## Requirements
 
 - Google Chrome 114 or newer
-- Access to `http://192.168.10.72:8080/feedback/`
+- Access to a HyperDyn portal with a `/feedback` URL (default `http://192.168.10.72:8080/feedback/`)
 - Student accounts where the username and password are the register number
 - A CSV or TXT file with one register number per line (maximum 500 students, 2 MB)
 
@@ -35,11 +37,12 @@ Do not install a self-signed `.crx` directly. Current Chrome versions reject it 
 ## Usage
 
 1. Open the AFFS side panel.
-2. Choose **Mid-term**, **End-term**, or both.
-3. Click **Import CSV** and select a CSV or TXT file. You can also drop the file on the Students card.
-4. Review the student list. Pending and failed students will run.
-5. Click **Start**. The automation tab opens and the extension processes each student.
-6. Click **Stop** to stop after the current step. The interrupted student remains pending.
+2. If your portal is not the default, enter its URL in **Portal URL**, click **Save URL**, and allow access when Chrome asks.
+3. Choose **Mid-term**, **End-term**, or both.
+4. Click **Import CSV** and select a CSV or TXT file. You can also drop the file on the Students card.
+5. Review the student list. Pending and failed students will run.
+6. Click **Start**. The automation tab opens and the extension processes each student.
+7. Click **Stop** to stop after the current step. The interrupted student remains pending.
 
 Enable **Dry run** to select a course and fill the form without submitting. Dry runs do not mark students complete.
 
@@ -65,10 +68,10 @@ The first non-empty cell in each row is used. Headers such as `Register Number`,
 
 1. The background service worker builds a queue from pending and failed students.
 2. It opens one automation tab and signs in with the register number as both username and password.
-3. It opens the mid-term or end-term page and selects each available course.
+3. It opens the mid-term or end-term page and asks the content script to select the next course with real dropdown clicks.
 4. It fills every visible rating field with a weighted random value from 1 to 5.
-5. It submits the form and waits for the course to leave the dropdown. The portal's `Completed!` dialog is recorded in the activity log.
-6. It signs out, then continues with the next student.
+5. It submits the form. Because the portal reloads the page after each submission, the background checks the fresh page for the success message and selects the next remaining course.
+6. It records the portal's `Completed!` dialog when the mode is finished, signs out, and continues with the next student.
 
 Student records and settings are stored in `chrome.storage.local`. Logs and transient run state use `chrome.storage.session`.
 
@@ -81,7 +84,7 @@ const ORIGIN = 'http://192.168.10.72:8080';
 const BASE = `${ORIGIN}/feedback`;
 ```
 
-If the portal address changes, update `ORIGIN` in `constants.js` and the host permission and content-script match in `manifest.json`.
+`DEFAULT_PORTAL_BASE` is the default. To use a different portal, set it in the side panel's **Portal URL** field; `AFFS.normalizePortalBase()` and `AFFS.portalUrls()` handle the accepted forms and derived URLs. The background registers the content script for a custom origin after Chrome grants access, so you do not need to edit `manifest.json` for a new portal.
 
 The content script uses these portal elements:
 

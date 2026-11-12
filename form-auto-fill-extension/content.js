@@ -683,6 +683,7 @@
       endInputCount: endInputs.length,
       courseName: getCourseName(),
       selectedLabel: getSelectedLabel(),
+      submissionMessage: getSubmissionMessageText(),
       loginError: hasLoginForm ? getLoginError() : '',
       completion: getCompletionText(),
       completionDialog: getCompletionDialogText(),
@@ -738,112 +739,121 @@
   // Feedback form
   // ---------------------------------------------------------------------------
 
+  function getVisibleCourseMenuItem(course) {
+    if (!hasVisibleCourseMenu()) {
+      return null;
+    }
+
+    const panel = getCoursePanel();
+    const items = getCourseMenuItems(panel || document);
+    const item = findCourseMenuItem(course, items);
+    return item && isElementVisible(item) ? item : null;
+  }
+
+  async function closeCourseMenu() {
+    if (!hasVisibleCourseMenu()) {
+      return;
+    }
+
+    const widget = byId('courseSelect');
+    const trigger =
+      widget?.querySelector('.ui-selectonemenu-trigger') ||
+      byId('courseSelectLabel') ||
+      widget;
+
+    if (!trigger) {
+      return;
+    }
+
+    trigger.click();
+    await waitFor(() => !hasVisibleCourseMenu(), {
+      timeout: 1500,
+      interval: 100,
+      message: 'the course menu to close',
+    }).catch(() => {});
+  }
+
   async function selectCourseWithMenu(course) {
     const widget = byId('courseSelect');
     if (!widget) {
       throw new Error('The course menu was not found.');
     }
 
-    await openCourseMenu();
+    const label = course.label || course.value;
+    let lastOptions = [];
 
-    const panel = getCoursePanel();
-    const items = getCourseMenuItems(panel || document);
-    const item = findCourseMenuItem(course, items);
+    // Drive the visible dropdown exactly like a user: open the menu, wait for
+    // the target item to render, click it, and verify. This runs the portal's
+    // own AJAX handler so the course data updates immediately. If the menu is
+    // still showing the previous render, close it and reopen it rather than
+    // forcing the hidden <select> value behind the scenes.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await openCourseMenu();
 
-    if (!item) {
-      // The menu may be stale after an AJAX refresh. Ask the PrimeFaces
-      // widget to select by value before giving up.
-      const pfWidget = getPrimeFacesWidget();
-      if (
-        pfWidget &&
-        course.value &&
-        typeof pfWidget.selectValue === 'function'
-      ) {
+      let item = null;
+      try {
+        item = await waitFor(() => getVisibleCourseMenuItem(course), {
+          timeout: attempt === 0 ? 5000 : 3000,
+          interval: 150,
+          message: `the course menu to show ${label}`,
+        });
+      } catch {
+        item = null;
+      }
+
+      if (item) {
+        clickCourseMenuItem(item);
+
         try {
-          pfWidget.selectValue(course.value);
-          const selected = await waitFor(() => isCourseSelected(course), {
-            timeout: 5000,
+          await waitFor(() => isCourseSelected(course), {
+            timeout: 8000,
             interval: 150,
             message: 'the course to be selected',
-          }).catch(() => false);
-          if (selected) {
-            await jitter(450, 750);
-            return;
-          }
+          });
+          await jitter(450, 750);
+          return;
         } catch {
-          // Fall through to the diagnostic error.
+          // The click did not take; fall through and reopen the menu.
         }
       }
 
-      const labels = items
+      const panel = getCoursePanel();
+      lastOptions = getCourseMenuItems(panel || document)
         .slice(0, 8)
         .map((element) =>
           (element.getAttribute('data-label') || element.textContent || '').trim()
         )
         .filter(Boolean);
-      const suffix = labels.length ? ` Options: ${labels.join(', ')}.` : '';
-      throw new Error(
-        `Course ${course.label || course.value} was not found in the course menu.${suffix}`
-      );
+
+      await closeCourseMenu();
+      await jitter(250, 450);
     }
 
-    clickCourseMenuItem(item);
-
-    let selected = false;
-    try {
-      await waitFor(() => isCourseSelected(course), {
-        timeout: 8000,
-        interval: 150,
-        message: 'the course to be selected',
-      });
-      selected = true;
-    } catch {
-      selected = false;
-    }
-
-    if (!selected) {
-      const pfWidget = getPrimeFacesWidget();
-      let attempted = false;
-
+    // Last resort only: ask the PrimeFaces widget to select by value.
+    const pfWidget = getPrimeFacesWidget();
+    if (pfWidget && course.value && typeof pfWidget.selectValue === 'function') {
       try {
-        if (pfWidget && typeof pfWidget.selectValue === 'function' && course.value) {
-          pfWidget.selectValue(course.value);
-          attempted = true;
+        pfWidget.selectValue(course.value);
+        const selected = await waitFor(() => isCourseSelected(course), {
+          timeout: 5000,
+          interval: 150,
+          message: 'the course to be selected',
+        }).catch(() => false);
+        if (selected) {
+          await jitter(450, 750);
+          return;
         }
       } catch {
-        attempted = false;
-      }
-
-      if (!attempted && pfWidget && typeof pfWidget.selectItem === 'function') {
-        try {
-          const jq = globalThis.jQuery;
-          pfWidget.selectItem(jq ? jq(item) : item);
-          attempted = true;
-        } catch {
-          attempted = false;
-        }
-      }
-
-      if (attempted) {
-        try {
-          await waitFor(() => isCourseSelected(course), {
-            timeout: 5000,
-            interval: 150,
-            message: 'the course to be selected',
-          });
-          selected = true;
-        } catch {
-          selected = false;
-        }
+        // Fall through to the diagnostic error.
       }
     }
 
-    if (!selected) {
-      const current = getSelectedLabel() || 'empty';
-      throw new Error(
-        `The portal did not select ${course.label || course.value} (current: ${current}).`
-      );
-    }
+    const suffix = lastOptions.length
+      ? ` Options: ${lastOptions.join(', ')}.`
+      : '';
+    throw new Error(
+      `Course ${label} was not found in the course menu.${suffix}`
+    );
   }
 
   async function selectCourse(course) {
@@ -874,19 +884,26 @@
     await jitter(450, 750);
 
     if (!isCourseSelected(course)) {
-      select.value = course.value;
-      select.dispatchEvent(new Event('change', { bubbles: true }));
+      if (usesMenu) {
+        // The dropdown reverted during the AJAX render. Retry with a real
+        // click instead of assigning the hidden <select> value, which does
+        // not run the portal's own selection handler.
+        await selectCourseWithMenu(course);
+      } else {
+        select.value = course.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
 
-      try {
-        await waitFor(() => isCourseSelected(course), {
-          timeout: 3000,
-          interval: 200,
-          message: 'the course details',
-        });
-      } catch {
-        throw new Error(
-          `The portal did not select ${course.label || course.value}.`
-        );
+        try {
+          await waitFor(() => isCourseSelected(course), {
+            timeout: 3000,
+            interval: 200,
+            message: 'the course details',
+          });
+        } catch {
+          throw new Error(
+            `The portal did not select ${course.label || course.value}.`
+          );
+        }
       }
     }
   }
@@ -1011,6 +1028,28 @@
     };
   }
 
+  async function waitForCourseListToSettle(previousCourse, timeout = 1500) {
+    const deadline = Date.now() + timeout;
+
+    while (Date.now() < deadline && !stopRequested) {
+      const dialogText = getCompletionDialogText();
+      if (/completed!?/i.test(dialogText)) {
+        return { completed: true, completion: dialogText };
+      }
+
+      const stillListed = getCourseOptions().some((item) =>
+        isSameCourse(item, previousCourse)
+      );
+      if (!stillListed) {
+        return { completed: false };
+      }
+
+      await sleep(150);
+    }
+
+    return { completed: false };
+  }
+
   async function runFeedback(payload) {
     const { runId, student, mode, dryRun } = payload;
     const label = mode === 'mid' ? 'mid-term' : 'end-term';
@@ -1019,6 +1058,27 @@
     const total = initialCourses.length;
     courseSuccessSignal = '';
     courseSuccessAt = 0;
+
+    const submittedValues = new Set();
+    const submittedLabels = new Set();
+    const markCourseSubmitted = (course) => {
+      const value = normalizeText(course?.value);
+      const label = normalizeText(course?.label);
+      if (value) {
+        submittedValues.add(value);
+      }
+      if (label) {
+        submittedLabels.add(label);
+      }
+    };
+    const isCourseSubmitted = (course) => {
+      const value = normalizeText(course?.value);
+      const label = normalizeText(course?.label);
+      return (
+        (Boolean(value) && submittedValues.has(value)) ||
+        (Boolean(label) && submittedLabels.has(label))
+      );
+    };
 
     const initialDialog = getCompletionDialogText();
     if (/completed!?/i.test(initialDialog)) {
@@ -1138,6 +1198,9 @@
         }
 
         if (nextCourses.length === 0) {
+          if (submitted >= total) {
+            break;
+          }
           throw new Error(
             'The course list is empty but the portal did not report Completed!'
           );
@@ -1147,9 +1210,40 @@
         continue;
       }
 
-      // The portal removes a subject from the dropdown as soon as it is
-      // submitted, so the first remaining item is always the next subject.
-      const course = courses[0];
+      // The portal can briefly keep the submitted subject in the list while
+      // the AJAX re-render is still in flight. Track submitted subjects and
+      // always pick the first one that has not been submitted yet; otherwise
+      // the loop reselects the same subject and never reaches the next one.
+      let course = courses.find((item) => !isCourseSubmitted(item));
+      if (!course) {
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline && !stopRequested) {
+          const statusText = getCompletionDialogText();
+          if (/completed!?/i.test(statusText)) {
+            completion = statusText;
+            break;
+          }
+
+          course =
+            getCourseOptions().find((item) => !isCourseSubmitted(item)) ||
+            null;
+          if (course) {
+            break;
+          }
+
+          await sleep(150);
+        }
+
+        if (!course) {
+          if (/completed!?/i.test(completion) || submitted >= total) {
+            break;
+          }
+          throw new Error(
+            'The course list did not provide another unsubmitted subject.'
+          );
+        }
+      }
+
       await selectCourse(course);
 
       if (stopRequested) {
@@ -1181,6 +1275,7 @@
 
       completion = result.completion || completion;
       submitted += 1;
+      markCourseSubmitted(course);
       send({
         type: 'FEEDBACK_PROGRESS',
         runId,
@@ -1198,12 +1293,21 @@
         break;
       }
 
-      // The success message and the dropdown update arrive in the same AJAX
-      // response. No fixed delay is needed before opening the menu again.
-      await sleep(100);
+      // The success message can arrive before the dropdown's AJAX re-render.
+      // Wait briefly for the submitted subject to leave the list (or for the
+      // completion dialog). If the portal keeps submitted subjects listed,
+      // isCourseSubmitted() skips them on the next iteration.
+      const settle = await waitForCourseListToSettle(course, 1500);
+      if (settle.completed) {
+        completion = settle.completion;
+        break;
+      }
     }
 
-    const remaining = getCourseOptions().length;
+    // Some portal versions keep already-submitted subjects in the dropdown.
+    // Report the number of initial subjects that still need feedback, not the
+    // raw option count, so a stale list does not look like unfinished work.
+    const remaining = Math.max(0, total - submitted);
 
     send({
       type: 'FEEDBACK_COMPLETE',
@@ -1242,6 +1346,69 @@
       stopRequested = true;
       sendResponse({ stopped: true });
       return false;
+    }
+
+    if (message.type === 'PREPARE_COURSE') {
+      if (activeRun) {
+        sendResponse({
+          ok: false,
+          error: 'Feedback automation is already running on this page.',
+        });
+        return false;
+      }
+
+      if (!VALID_MODES.has(message.mode)) {
+        sendResponse({ ok: false, error: 'Unknown feedback mode.' });
+        return false;
+      }
+
+      const course = message.course;
+      if (!course || (!course.value && !course.label)) {
+        sendResponse({ ok: false, error: 'No course was provided.' });
+        return false;
+      }
+
+      activeRun = {
+        runId: message.runId,
+        student: message.student,
+        mode: message.mode,
+      };
+      stopRequested = false;
+      startHeartbeat();
+
+      selectCourse(course)
+        .then(() => {
+          if (stopRequested) {
+            throw new Error('The run was stopped.');
+          }
+
+          const filled = fillRatingInputs(message.mode);
+          if (!filled) {
+            throw new Error(
+              'No rating fields were found on the feedback form.'
+            );
+          }
+
+          sendResponse({
+            ok: true,
+            course: course.label || course.value,
+            filled,
+            mode: message.mode,
+          });
+        })
+        .catch((error) => {
+          sendResponse({
+            ok: false,
+            error:
+              error?.message || 'The course could not be prepared for submission.',
+          });
+        })
+        .finally(() => {
+          activeRun = null;
+          stopHeartbeat();
+        });
+
+      return true;
     }
 
     if (message.type === 'START_FEEDBACK') {

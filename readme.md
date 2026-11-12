@@ -30,7 +30,8 @@ Built with Manifest V3 and [Material Web](https://material-web.dev/) components.
 - **Bulk CSV import** — Load a list of register numbers instead of entering students one at a time.
 - **Sequential automation** — For each student: sign in, submit available feedback, sign out, then continue to the next student.
 - **Mid-term and end-term modes** — Run either feedback type or both.
-- **Course-by-course submission** — Selects each available course, fills every rating field, submits, and waits for the portal to confirm that the course is complete.
+- **Course-by-course submission** — Selects each available course, fills every rating field, and continues with the next course even when the portal reloads the page after each submission.
+- **Custom portal URL** — Point the extension at a LAN address, tunnel, or hosted portal. The URL is saved between sessions and Chrome asks for access only when a new origin is used.
 - **Completion detection** — Confirms success when the course leaves the dropdown and the portal reports `Completed!`.
 - **Dry run** — Selects a course and fills the form without submitting, so the workflow can be checked safely.
 - **Material side panel** — Real Material Web controls and lists, with live run status, per-student progress, and an activity log.
@@ -43,7 +44,7 @@ Built with Manifest V3 and [Material Web](https://material-web.dev/) components.
 | --- | --- |
 | Browser | Google Chrome 114 or newer |
 | Operating system | Windows, macOS, or Linux |
-| Portal | `http://192.168.10.72:8080/feedback/` |
+| Portal | Any HyperDyn portal with a `/feedback` URL; default `http://192.168.10.72:8080/feedback/` |
 | Login | Username and password are both the student register number |
 | Input file | CSV or TXT, up to 2 MB and 500 students |
 
@@ -98,12 +99,27 @@ If Chrome still shows an older layout after an update, reload the extension on `
 
 1. Open the portal in a tab if you want to confirm it is reachable: `http://192.168.10.72:8080/feedback/`.
 2. Open the AFFS side panel.
-3. Select **Mid-term**, **End-term**, or both.
-4. Click **Import CSV** and choose a CSV or TXT file. You can also drag the file onto the Students card.
-5. Review the imported students. Pending and failed students will run; completed students are skipped.
-6. Click **Start**.
-7. Keep the automation tab open. The extension logs in, submits feedback, signs out, and continues automatically.
-8. Click **Stop** to stop after the current step. The current student is left pending so it can be retried.
+3. In **Portal URL**, enter the portal address if it is not the default. You can paste the full login URL, a feedback page URL, the `/feedback` URL, or just a hostname. Click **Save URL** and allow access when Chrome asks.
+4. Select **Mid-term**, **End-term**, or both.
+5. Click **Import CSV** and choose a CSV or TXT file. You can also drag the file onto the Students card.
+6. Review the imported students. Pending and failed students will run; completed students are skipped.
+7. Click **Start**.
+8. Keep the automation tab open. The extension logs in, submits feedback, signs out, and continues automatically.
+9. Click **Stop** to stop after the current step. The current student is left pending so it can be retried.
+
+### Custom portal URL
+
+The default portal is `http://192.168.10.72:8080/feedback`. If your portal is served from another machine, a tunnel, or a different port, enter its address in the **Portal URL** field and click **Save URL**.
+
+Accepted forms include:
+
+- `https://analysis-favor-rep-creating.trycloudflare.com/feedback`
+- `https://example.edu/feedback/login.xhtml`
+- `https://example.edu/feedback/pages/student/mfeedback.xhtml`
+- `example.edu/feedback`
+- `192.168.10.50:8080`
+
+The extension normalizes the value to the `/feedback` base. Bare hostnames use `https://` unless they are localhost or a private network address. Chrome asks for access to the new origin the first time; allow it, then reload any portal tab that was already open.
 
 ### Dry run
 
@@ -163,9 +179,9 @@ Rules:
 1. **Queue building** — The background service worker selects pending and failed students.
 2. **Sign in** — Opens one automation tab and signs in with the register number as both username and password.
 3. **Feedback pages** — Navigates to the mid-term or end-term page and reads the available courses.
-4. **Course selection** — Selects the first available course and waits for the form to update.
-5. **Form filling** — Fills every visible rating field with a weighted random value from 1 to 5, biased toward the lower end.
-6. **Submission** — Clicks submit and waits for the course to leave the dropdown. The portal's `Completed!` dialog is recorded in the activity log.
+4. **Course selection** — The background service worker asks the content script to select the next course with real dropdown clicks and fill every visible rating field.
+5. **Submission** — Clicks submit and waits for the portal to confirm the subject. The portal reloads the page after each submission, so the background repeats the selection on the fresh page instead of relying on a page script that disappears.
+6. **Completion** — Continues with the next remaining course and records the portal's `Completed!` dialog when the mode is finished.
 7. **Sign out** — Opens the portal logout URL and waits for the login page.
 8. **Next student** — Repeats until the queue is empty or the run is stopped.
 
@@ -311,6 +327,14 @@ Released under the MIT License. See [LICENSE](LICENSE) for details.
 The side panel bundles [Material Web](https://github.com/material-components/material-web) and [Lit](https://github.com/lit/lit), both licensed under the Apache License 2.0. See [THIRD_PARTY_NOTICES.md](form-auto-fill-extension/THIRD_PARTY_NOTICES.md) for details.
 
 ## Version history
+
+### v2.0.2
+
+- Add a persisted **Portal URL** setting for tunnels, LAN addresses, and hosted portals
+- Request Chrome access for a new portal origin and register the content script automatically
+- Move the multi-course loop into the background service worker so every remaining subject is processed after the portal reloads the page following each submission
+- Verify completion from the reloaded page's success message and `Completed!` dialog
+- Tighten dropdown selection with real visible menu clicks and retries
 
 ### v2.0.1
 

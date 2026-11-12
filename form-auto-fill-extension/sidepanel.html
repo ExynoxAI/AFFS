@@ -23,7 +23,7 @@
           <p class="brand-sub">Feedback automation</p>
         </div>
       </div>
-      <span class="version" id="version">v2.0.0</span>
+      <span class="version" id="version">v2.0.2</span>
     </header>
 
     <main class="main">
@@ -44,6 +44,22 @@
         ></md-linear-progress>
 
         <p class="run-detail" id="runDetail">Import a CSV to get started.</p>
+
+        <div class="portal" id="portalSettings">
+          <span class="options-label">Portal</span>
+          <md-outlined-text-field
+            id="portalUrl"
+            class="portal-url"
+            label="Portal URL"
+            placeholder="http://192.168.10.72:8080/feedback"
+            supporting-text="Use the /feedback URL of your portal"
+            autocomplete="off"
+          ></md-outlined-text-field>
+          <div class="portal-actions">
+            <md-text-button id="portalSaveBtn" type="button">Save URL</md-text-button>
+            <md-text-button id="portalResetBtn" type="button">Use default</md-text-button>
+          </div>
+        </div>
 
         <div class="options" id="settings">
           <span class="options-label">Feedback</span>

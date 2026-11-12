@@ -17,6 +17,8 @@
     modes: [...(A.DEFAULTS?.modes || ['mid', 'end'])],
     dryRun: Boolean(A.DEFAULTS?.dryRun),
     delayMs: Number.isFinite(A.DEFAULTS?.delayMs) ? A.DEFAULTS.delayMs : 1200,
+    portalBase:
+      A.DEFAULTS?.portalBase || A.DEFAULT_PORTAL_BASE || A.BASE,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -29,6 +31,9 @@
     progressBar: $('progressBar'),
     runDetail: $('runDetail'),
     notice: $('notice'),
+    portalUrl: $('portalUrl'),
+    portalSaveBtn: $('portalSaveBtn'),
+    portalResetBtn: $('portalResetBtn'),
     modeMid: $('modeMid'),
     modeEnd: $('modeEnd'),
     dryRun: $('dryRun'),
@@ -65,6 +70,7 @@
   let studentsSignature = '';
   let lastCurrentIndex = -1;
   let commandPending = false;
+  let renderedPortalBase = null;
   let noticeTimer = null;
   let hintTimer = null;
 
@@ -94,7 +100,35 @@
         0,
         10000
       ),
+      portalBase:
+        A.normalizePortalBase(input.portalBase) || DEFAULT_SETTINGS.portalBase,
     };
+  }
+
+  function readPortalInput() {
+    const raw = String(el.portalUrl.value || '').trim();
+    if (!raw) {
+      return DEFAULT_SETTINGS.portalBase;
+    }
+    return A.normalizePortalBase(raw);
+  }
+
+  function requestPortalPermission(base) {
+    try {
+      if (!chrome.permissions?.request) {
+        return Promise.resolve(false);
+      }
+
+      const origin = new URL(base).origin;
+      const defaultOrigin = new URL(DEFAULT_SETTINGS.portalBase).origin;
+      if (origin === defaultOrigin) {
+        return Promise.resolve(true);
+      }
+
+      return chrome.permissions.request({ origins: [`${origin}/*`] });
+    } catch {
+      return Promise.resolve(false);
+    }
   }
 
   function isBusy() {
@@ -291,11 +325,26 @@
   }
 
   function renderSettings() {
+    const savedPortal = ui.settings.portalBase;
+    if (
+      renderedPortalBase === null ||
+      (renderedPortalBase !== savedPortal &&
+        !el.portalUrl.matches(':focus-within'))
+    ) {
+      el.portalUrl.value = savedPortal;
+      renderedPortalBase = savedPortal;
+      el.portalUrl.error = false;
+      el.portalUrl.errorText = '';
+    }
+
     el.modeMid.checked = ui.settings.modes.includes('mid');
     el.modeEnd.checked = ui.settings.modes.includes('end');
     el.dryRun.checked = ui.settings.dryRun;
 
     const disabled = commandPending || isBusy();
+    el.portalUrl.disabled = disabled;
+    el.portalSaveBtn.disabled = disabled;
+    el.portalResetBtn.disabled = disabled;
     el.modeMid.disabled = disabled;
     el.modeEnd.disabled = disabled;
     el.dryRun.disabled = disabled;
@@ -666,7 +715,7 @@
   // Commands
   // ---------------------------------------------------------------------------
 
-  function readSettings() {
+  function readSettings(options = {}) {
     const modes = [];
     if (el.modeMid.checked) {
       modes.push('mid');
@@ -675,10 +724,16 @@
       modes.push('end');
     }
 
+    const portalBase =
+      options.includePortal === false
+        ? ui.settings.portalBase
+        : readPortalInput() || ui.settings.portalBase;
+
     return {
       modes,
       dryRun: Boolean(el.dryRun.checked),
       delayMs: ui.settings.delayMs,
+      portalBase,
     };
   }
 
@@ -688,6 +743,14 @@
     }
 
     clearNotice();
+    const portalBase = readPortalInput();
+    if (!portalBase) {
+      el.portalUrl.error = true;
+      el.portalUrl.errorText = 'Enter a valid http:// or https:// URL.';
+      showNotice('Enter a valid portal URL before starting.');
+      return;
+    }
+
     const settings = readSettings();
     if (settings.modes.length === 0) {
       showNotice('Select at least one feedback type.');
@@ -699,10 +762,22 @@
       return;
     }
 
+    // Call permissions.request synchronously so Chrome keeps the click gesture.
+    const permission = requestPortalPermission(portalBase);
     commandPending = true;
     render();
 
     try {
+      const allowed = await permission;
+      if (!allowed) {
+        el.portalUrl.error = true;
+        el.portalUrl.errorText = 'Chrome access was not granted for this URL.';
+        showNotice(
+          'Chrome access was not granted. Allow access when Chrome asks, then start again.'
+        );
+        return;
+      }
+
       const response = await request({ type: 'START_RUN', settings });
       if (response?.error) {
         showNotice(response.error);
@@ -741,7 +816,7 @@
       return;
     }
 
-    const settings = readSettings();
+    const settings = readSettings({ includePortal: false });
     ui.settings = settings;
     renderRun();
 
@@ -763,6 +838,76 @@
     } catch (error) {
       showNotice(error?.message || 'Settings could not be saved.');
     }
+  }
+
+  async function handlePortalSave() {
+    if (commandPending || isBusy()) {
+      return;
+    }
+
+    clearNotice();
+    const portalBase = readPortalInput();
+    if (!portalBase) {
+      el.portalUrl.error = true;
+      el.portalUrl.errorText = 'Enter a valid http:// or https:// URL.';
+      showNotice('Enter a valid portal URL.');
+      return;
+    }
+
+    // Call permissions.request synchronously so Chrome keeps the click gesture.
+    const permission = requestPortalPermission(portalBase);
+    commandPending = true;
+    render();
+
+    try {
+      const allowed = await permission;
+      if (!allowed) {
+        el.portalUrl.error = true;
+        el.portalUrl.errorText = 'Chrome access was not granted for this URL.';
+        showNotice(
+          'Chrome access was not granted. Allow access when Chrome asks, then save again.'
+        );
+        return;
+      }
+
+      const settings = { ...ui.settings, portalBase };
+      const response = await request({ type: 'SAVE_SETTINGS', settings });
+      if (response?.error) {
+        showNotice(response.error);
+        if (response.settings) {
+          ui.settings = normalizeSettings(response.settings);
+        }
+        return;
+      }
+
+      if (response?.settings) {
+        ui.settings = normalizeSettings(response.settings);
+      }
+
+      renderedPortalBase = ui.settings.portalBase;
+      el.portalUrl.value = ui.settings.portalBase;
+      el.portalUrl.error = false;
+      el.portalUrl.errorText = '';
+      showNotice(
+        'Portal URL saved. Reload the portal tab if it is already open.'
+      );
+    } catch (error) {
+      showNotice(error?.message || 'The portal URL could not be saved.');
+    } finally {
+      commandPending = false;
+      render();
+    }
+  }
+
+  async function handlePortalReset() {
+    if (commandPending || isBusy()) {
+      return;
+    }
+
+    el.portalUrl.value = DEFAULT_SETTINGS.portalBase;
+    el.portalUrl.error = false;
+    el.portalUrl.errorText = '';
+    await handlePortalSave();
   }
 
   async function handleReset() {
@@ -852,6 +997,20 @@
     el.importBtn.addEventListener('click', () => el.csvInput.click());
     el.templateBtn.addEventListener('click', downloadTemplate);
     el.templateBtnEmpty.addEventListener('click', downloadTemplate);
+    el.portalSaveBtn.addEventListener('click', handlePortalSave);
+    el.portalResetBtn.addEventListener('click', handlePortalReset);
+
+    el.portalUrl.addEventListener('input', () => {
+      el.portalUrl.error = false;
+      el.portalUrl.errorText = '';
+    });
+    el.portalUrl.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handlePortalSave();
+      }
+    });
+
     el.csvInput.addEventListener('change', () => {
       const file = el.csvInput.files?.[0];
       if (file) {

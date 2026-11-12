@@ -8,4 +8,5 @@ import '@material/web/checkbox/checkbox.js';
 import '@material/web/list/list.js';
 import '@material/web/list/list-item.js';
 import '@material/web/progress/linear-progress.js';
+import '@material/web/textfield/outlined-text-field.js';
 import '../form-auto-fill-extension/sidepanel.js';

@@ -4,6 +4,7 @@ importScripts('constants.js');
 
 const A = globalThis.AFFS;
 const DEFAULT_SETTINGS = A.DEFAULTS;
+const PORTAL_SCRIPT_ID = 'affs-portal';
 const FEEDBACK_WAIT_MS = 10 * 60 * 1000;
 const REGISTER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{2,39}$/;
 const HEADER_KEYS = new Set([
@@ -212,7 +213,63 @@ function normalizeSettings(raw) {
       0,
       10000
     ),
+    portalBase:
+      A.normalizePortalBase(input.portalBase) || DEFAULT_SETTINGS.portalBase,
   };
+}
+
+function portalUrls(settings = state.settings) {
+  return A.portalUrls(settings?.portalBase);
+}
+
+async function syncPortalContentScript(base = state.settings.portalBase) {
+  if (!chrome.scripting?.registerContentScripts) {
+    return { ok: false, error: 'The scripting API is unavailable.' };
+  }
+
+  const origin = A.portalUrls(base).origin;
+  const defaultOrigin = A.portalUrls(DEFAULT_SETTINGS.portalBase).origin;
+
+  try {
+    await chrome.scripting
+      .unregisterContentScripts({ ids: [PORTAL_SCRIPT_ID] })
+      .catch(() => {});
+  } catch {
+    // No previous dynamic script was registered.
+  }
+
+  if (origin === defaultOrigin) {
+    return { ok: true };
+  }
+
+  const granted = await chrome.permissions
+    .contains({ origins: [`${origin}/*`] })
+    .catch(() => false);
+
+  if (!granted) {
+    return {
+      ok: false,
+      error: `Chrome has not granted access to ${origin}. Save the portal URL and allow access when Chrome asks.`,
+    };
+  }
+
+  try {
+    await chrome.scripting.registerContentScripts([
+      {
+        id: PORTAL_SCRIPT_ID,
+        matches: [`${origin}/*`],
+        js: ['constants.js', 'content.js'],
+        runAt: 'document_start',
+        persistAcrossSessions: true,
+      },
+    ]);
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: `The custom portal content script could not be registered: ${error.message}`,
+    };
+  }
 }
 
 function createStudent(regNo) {
@@ -323,7 +380,10 @@ async function ensureTab() {
     state.tabId = null;
   }
 
-  const tab = await chrome.tabs.create({ url: A.LOGIN_URL, active: true });
+  const tab = await chrome.tabs.create({
+    url: portalUrls().login,
+    active: true,
+  });
   state.tabId = tab.id;
   persistSessionNow();
   return state.tabId;
@@ -451,7 +511,7 @@ async function waitForLogin(tabId) {
 
 async function logout(tabId) {
   try {
-    await chrome.tabs.update(tabId, { url: A.LOGOUT_URL });
+    await chrome.tabs.update(tabId, { url: portalUrls().logout });
   } catch (error) {
     throw new Error(`Could not open the sign-out URL: ${error.message}`);
   }
@@ -595,7 +655,273 @@ async function detectCompletionText(tabId) {
   return '';
 }
 
-async function runFeedbackMode(tabId, reg, mode, settings, totalCourses = 0) {
+function courseKey(course) {
+  const label = String(course?.label ?? '').trim().toLowerCase();
+  const value = String(course?.value ?? '').trim().toLowerCase();
+  return label || value;
+}
+
+function sameCourse(a, b) {
+  const aKey = courseKey(a);
+  const bKey = courseKey(b);
+  return Boolean(aKey && bKey && aKey === bKey);
+}
+
+function isCourseSuccessText(text, course) {
+  const normalized = String(text ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  if (
+    !normalized ||
+    !/entry/i.test(normalized) ||
+    !/\bsu\w*ful+\b/i.test(normalized)
+  ) {
+    return false;
+  }
+  if (/\bnot\b|error|fail|invalid|already|pending/i.test(normalized)) {
+    return false;
+  }
+
+  const tokens = [course?.value, course?.label]
+    .map((value) => String(value ?? '').trim().toLowerCase())
+    .filter(Boolean);
+  return tokens.some((token) => normalized.includes(token));
+}
+
+async function prepareCourse(tabId, reg, mode, course) {
+  let response;
+  try {
+    response = await chrome.tabs.sendMessage(tabId, {
+      type: 'PREPARE_COURSE',
+      runId: state.runId,
+      student: reg,
+      mode,
+      course,
+    });
+  } catch (error) {
+    throw new Error(
+      `Could not select ${course.label || course.value}: ${error.message}`
+    );
+  }
+
+  if (!response?.ok) {
+    throw new Error(
+      response?.error ||
+        `The portal did not select ${course.label || course.value}.`
+    );
+  }
+
+  return response;
+}
+
+async function clickSubmitButton(tabId) {
+  const deadline = Date.now() + 8000;
+  let lastReason = '';
+
+  while (Date.now() < deadline) {
+    assertRunning();
+
+    let results = null;
+    try {
+      results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const button =
+            document.getElementById('k:s2') ||
+            document.getElementById('submit');
+          if (!button) {
+            return { ok: false, reason: 'missing' };
+          }
+          if (button.classList.contains('ui-state-disabled')) {
+            return { ok: false, reason: 'disabled' };
+          }
+          button.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          button.click();
+          return { ok: true };
+        },
+      });
+    } catch (error) {
+      // A full page navigation can tear down the frame while the click is
+      // executing. Treat that as a submitted click and verify the new page.
+      lastReason = error.message;
+      return;
+    }
+
+    const result = results?.[0]?.result;
+    if (result?.ok) {
+      return;
+    }
+
+    lastReason = result?.reason || 'unknown';
+    await sleep(250);
+  }
+
+  throw new Error(
+    lastReason === 'missing'
+      ? 'The Submit button was not found.'
+      : 'The Submit button did not become available.'
+  );
+}
+
+async function waitForSubmissionResult(tabId, course) {
+  const deadline = Date.now() + 30000;
+  let info = null;
+
+  while (Date.now() < deadline) {
+    assertRunning();
+
+    info = await getPageInfo(tabId, { retries: 4, interval: 500 });
+    if (info) {
+      const stillListed = info.courses.some((item) =>
+        sameCourse(item, course)
+      );
+      const success = isCourseSuccessText(info.submissionMessage, course);
+
+      if (success || !stillListed) {
+        return { ok: true, info, success };
+      }
+
+      if (/completed!?/i.test(info.completionDialog || '')) {
+        return { ok: true, info, completed: true };
+      }
+    }
+
+    await sleep(400);
+  }
+
+  return { ok: false, info };
+}
+
+async function runLiveFeedbackMode(
+  tabId,
+  reg,
+  mode,
+  settings,
+  totalCourses = 0
+) {
+  const pageLabel = mode === 'mid' ? 'mid-term' : 'end-term';
+  const submittedCourses = new Set();
+  let submitted = 0;
+  let completion = '';
+
+  while (true) {
+    assertRunning();
+
+    const info = await getPageInfo(tabId, { retries: 10, interval: 400 });
+    if (!info) {
+      throw new Error(`The ${pageLabel} page did not respond.`);
+    }
+
+    const dialog = info.completionDialog || info.completion || '';
+    if (/completed!?/i.test(dialog)) {
+      completion = dialog;
+      break;
+    }
+
+    const remaining = info.courses.filter(
+      (course) => !submittedCourses.has(courseKey(course))
+    );
+
+    if (remaining.length === 0) {
+      // The portal removed every subject. Give it a moment to show the
+      // final status, then finish even if the dialog never appears.
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        assertRunning();
+        const status = await getPageInfo(tabId, {
+          retries: 2,
+          interval: 400,
+        });
+        const statusText =
+          status?.completionDialog || status?.completion || '';
+        if (/completed!?/i.test(statusText)) {
+          completion = statusText;
+          break;
+        }
+        await sleep(400);
+      }
+      break;
+    }
+
+    const course = remaining[0];
+    const label = course.label || course.value;
+
+    log('info', `${reg} · ${pageLabel} · selecting ${label}`);
+
+    try {
+      await prepareCourse(tabId, reg, mode, course);
+    } catch (error) {
+      // The reloaded page may still be settling. Nothing has been submitted
+      // yet, so one retry is safe.
+      assertRunning();
+      await sleep(600);
+      assertRunning();
+      await prepareCourse(tabId, reg, mode, course);
+    }
+
+    const before = await getPageInfo(tabId, {
+      retries: 3,
+      interval: 300,
+    });
+    if (
+      before &&
+      !before.courses.some((item) => sameCourse(item, course))
+    ) {
+      submittedCourses.add(courseKey(course));
+      submitted += 1;
+      log('info', `${reg} · ${pageLabel} · ${label} was already handled`);
+      continue;
+    }
+
+    // Let the course-change AJAX finish before clicking Submit.
+    await sleep(400);
+    await clickSubmitButton(tabId);
+
+    const result = await waitForSubmissionResult(tabId, course);
+    if (!result.ok) {
+      throw new Error(
+        `The portal did not confirm ${label}; the subject is still listed.`
+      );
+    }
+
+    submittedCourses.add(courseKey(course));
+    submitted += 1;
+    completion =
+      result.info?.completionDialog ||
+      result.info?.completion ||
+      completion;
+
+    const total = Math.max(totalCourses, submitted);
+    log(
+      'success',
+      `${reg} · ${pageLabel} · ${label} submitted (${submitted}/${total})`
+    );
+
+    if (/completed!?/i.test(completion)) {
+      break;
+    }
+  }
+
+  const total = Math.max(totalCourses, submitted);
+  return {
+    submitted,
+    total,
+    remaining: Math.max(0, total - submitted),
+    stopped: false,
+    dryRun: false,
+    alreadyCompleted: false,
+    completion,
+  };
+}
+
+async function runDryRunFeedbackMode(
+  tabId,
+  reg,
+  mode,
+  settings,
+  totalCourses = 0
+) {
   const key = `${state.runId}:${reg}:${mode}`;
   const waiter = createFeedbackWaiter(key);
 
@@ -666,6 +992,14 @@ async function runFeedbackMode(tabId, reg, mode, settings, totalCourses = 0) {
   }
 }
 
+async function runFeedbackMode(tabId, reg, mode, settings, totalCourses = 0) {
+  if (!settings.dryRun) {
+    return runLiveFeedbackMode(tabId, reg, mode, settings, totalCourses);
+  }
+
+  return runDryRunFeedbackMode(tabId, reg, mode, settings, totalCourses);
+}
+
 // -----------------------------------------------------------------------------
 // Student processing
 // -----------------------------------------------------------------------------
@@ -673,13 +1007,14 @@ async function runFeedbackMode(tabId, reg, mode, settings, totalCourses = 0) {
 async function processStudent(student, index, settings) {
   const reg = student.regNo;
   const tabId = state.tabId ?? (await ensureTab());
+  const portal = portalUrls(settings);
   let loggedIn = false;
 
   try {
     state.phase = 'Preparing session';
     broadcastState();
 
-    await navigate(tabId, A.LOGIN_URL);
+    await navigate(tabId, portal.login);
     let info = await getPageInfo(tabId);
     if (!info) {
       throw new Error('The portal did not respond.');
@@ -688,7 +1023,7 @@ async function processStudent(student, index, settings) {
     if (info.pageType !== 'login') {
       log('info', `${reg} · clearing the previous session`);
       await logout(tabId);
-      await navigate(tabId, A.LOGIN_URL);
+      await navigate(tabId, portal.login);
       info = await getPageInfo(tabId);
     }
 
@@ -730,7 +1065,7 @@ async function processStudent(student, index, settings) {
       state.phase = `${pageLabel} feedback`;
       broadcastState();
 
-      await navigate(tabId, isMid ? A.MID_URL : A.END_URL);
+      await navigate(tabId, isMid ? portal.mid : portal.end);
       const pageInfo = await getPageInfo(tabId);
       if (!pageInfo) {
         throw new Error(`The ${pageLabel} page did not respond.`);
@@ -1131,7 +1466,14 @@ async function saveSettings(rawSettings) {
     };
   }
 
-  state.settings = normalizeSettings(rawSettings);
+  const nextSettings = normalizeSettings(rawSettings);
+  const sync = await syncPortalContentScript(nextSettings.portalBase);
+  if (!sync.ok) {
+    await syncPortalContentScript(state.settings.portalBase).catch(() => {});
+    return { error: sync.error, settings: state.settings };
+  }
+
+  state.settings = nextSettings;
   await persistSettingsNow();
   broadcastState();
   return { settings: state.settings };
@@ -1145,6 +1487,11 @@ async function startRun(rawSettings) {
   const settings = normalizeSettings(rawSettings);
   if (settings.modes.length === 0) {
     return { error: 'Select at least one feedback type.' };
+  }
+
+  const sync = await syncPortalContentScript(settings.portalBase);
+  if (!sync.ok) {
+    return { error: sync.error };
   }
 
   const queue = [];
@@ -1314,6 +1661,11 @@ async function init() {
       }
     }
 
+    const sync = await syncPortalContentScript(state.settings.portalBase);
+    if (!sync.ok) {
+      log('warn', sync.error);
+    }
+
     try {
       await chrome.sidePanel.setPanelBehavior({
         openPanelOnActionClick: true,
@@ -1336,15 +1688,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   const senderUrl = sender.url || '';
   const fromExtensionPage = senderUrl.startsWith(chrome.runtime.getURL(''));
-  const fromPortal = senderUrl.startsWith(`${A.ORIGIN}/`);
 
   if (message.type.startsWith('FEEDBACK_')) {
-    if (!fromPortal) {
-      return false;
-    }
-
     initPromise
       .then(() => {
+        const origin = portalUrls().origin;
+        if (!senderUrl.startsWith(`${origin}/`)) {
+          return;
+        }
+
         if (message.type === 'FEEDBACK_PROGRESS') {
           handleProgress(message);
         } else if (message.type === 'FEEDBACK_COMPLETE') {

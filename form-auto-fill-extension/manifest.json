@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AFFS — Auto Form Fill",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "minimum_chrome_version": "114",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2DbPTcv6Nb8PqiHX3V96sTxDSbGyf3JPO9KAAngffb+MTE5QTUUvRxevSFOEHQL4gY5vJqs6S0LBxXNeRhn7p1g11iUVQwGZJ/MiLCCD+DMl+GZKTP6keM8pPBFgKUXIjUrdRNxaUOynkF2p4+DG6i2qpJSkwTOJiiMeT/xL2UcphjGjcH3USquan0qjVNyhO1OjQ9KQCHV83O0onUO4dTqnJpZBYbxIx9VS40IrK0uEXKi2sb27H4zI6yWDB4NhnP8b9XdbSt9J02CNVhhdBVTsxi9R469pZ5nbTWZBL/zgvHL+dmnH15Z++SrUgK+BpD8u5Ktp0G1z6o+6u/g6ywIDAQAB",
   "description": "Automates mid-term and end-term feedback submission on the HyperDyn feedback portal.",
@@ -13,6 +13,10 @@
   ],
   "host_permissions": [
     "http://192.168.10.72:8080/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js"
