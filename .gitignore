@@ -1,0 +1,9 @@
+# Chrome extension signing key - never commit this file
+*.pem
+
+# Packed extension artifacts and local packaging output
+*.crx
+crx/
+
+# Dependency directories
+node_modules/

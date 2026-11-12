@@ -1,0 +1,15 @@
+{
+  "name": "affs-build",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild sidepanel-entry.js --bundle --minify --legal-comments=eof --format=iife --target=chrome114 --outfile=../form-auto-fill-extension/sidepanel.bundle.js"
+  },
+  "dependencies": {
+    "@material/web": "^2.4.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

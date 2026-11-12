@@ -1,349 +1,333 @@
-# 🚀 AFFS - Auto Form Fill System
+# AFFS — Auto Form Fill System
 
-> **Smart Chrome Extension for Automated Form Filling**
+A Chrome side-panel extension for the HyperDyn feedback portal. It imports a CSV of student register numbers, logs in as each student, submits mid-term and end-term feedback, signs out, and moves to the next student.
 
-Automatically fills exam submission forms with intelligent form detection and submission automation. Built for efficiency and ease of use.
+Built with Manifest V3 and [Material Web](https://material-web.dev/) components. The interface follows the browser's light or dark theme through system colors.
 
-[![GitHub Release](https://img.shields.io/github/v/release/ExynoxAI/AFFS?style=flat-square)](https://github.com/ExynoxAI/AFFS/releases)
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Chrome Web Store](https://img.shields.io/badge/Chrome-Web%20Store-informational?style=flat-square&logo=google-chrome)](https://chrome.google.com/webstore)
+[![Release](https://img.shields.io/github/v/release/ExynoxAI/AFFS?style=flat-square)](https://github.com/ExynoxAI/AFFS/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Manifest V3](https://img.shields.io/badge/manifest-v3-informational?style=flat-square)](https://developer.chrome.com/docs/extensions/mv3/)
 
-<video controls width="640">
-  <source src="https://cs37.clideo.com/p/JMvWLWe6s2fmegb5TIzD-Q/8890e0a993227d4ab8297fc46038f33f/clideo_editor_eba6e3e42abf46eaa8ba90198fd13d75.mp4" type="video/mp4">
-  Tutorial for Installing an working with AFFS.
-</video>
+## Contents
 
----
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [CSV format](#csv-format)
+- [How it works](#how-it-works)
+- [Project structure](#project-structure)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [Privacy and security](#privacy-and-security)
+- [Support](#support)
+- [License](#license)
+- [Version history](#version-history)
 
-## ✨ Features
+## Features
 
-- ⚡ **Auto-Detection**: Automatically detects Mid-Term and End-Semester exam pages
-- 🎯 **Smart Form Filling**: Intelligently fills form fields with biased random values
-- 🔄 **Continuous Submission**: Automatically submits forms and continues until completion
-- 📋 **Subject Handling**: Automatically selects and processes all available subjects
-- 🎨 **Modern UI**: Clean, intuitive interface with Tailwind CSS
-- 📱 **Real-time Status**: Live feedback on automation progress
-- 🛡️ **Safe & Reliable**: Includes error handling and retry logic
-- 📝 **Console Logging**: Detailed debug information for troubleshooting
+- **Bulk CSV import** — Load a list of register numbers instead of entering students one at a time.
+- **Sequential automation** — For each student: sign in, submit available feedback, sign out, then continue to the next student.
+- **Mid-term and end-term modes** — Run either feedback type or both.
+- **Course-by-course submission** — Selects each available course, fills every rating field, submits, and waits for the portal to confirm that the course is complete.
+- **Completion detection** — Confirms success when the course leaves the dropdown and the portal reports `Completed!`.
+- **Dry run** — Selects a course and fills the form without submitting, so the workflow can be checked safely.
+- **Material side panel** — Real Material Web controls and lists, with live run status, per-student progress, and an activity log.
+- **Browser theme aware** — Uses Chrome's `Canvas`, `CanvasText`, and `AccentColor` system colors, so the panel follows the browser's light or dark theme.
+- **Local only** — No analytics, telemetry, or external network requests.
 
----
+## Requirements
 
-## 📦 Installation
+| Requirement | Details |
+| --- | --- |
+| Browser | Google Chrome 114 or newer |
+| Operating system | Windows, macOS, or Linux |
+| Portal | `http://192.168.10.72:8080/feedback/` |
+| Login | Username and password are both the student register number |
+| Input file | CSV or TXT, up to 2 MB and 500 students |
 
-### **Quick Start (3 Steps)**
+The portal must be reachable from the machine running Chrome. If the portal is on a campus network, connect to that network or VPN first.
 
-#### **Step 1: Download the Extension**
+## Installation
 
-Download the latest source code from the releases page:
-- 📥 [Download AFFS v1.0.0 (ZIP)](
-https://raw.githubusercontent.com/ExynoxAI/AFFS/refs/heads/main/AFFS-Release.v1.zip)
+### 1. Download the release
 
-Or clone from GitHub:
+Download the packaged extension:
+
+[AFFS-Release.v1.zip](https://raw.githubusercontent.com/ExynoxAI/AFFS/refs/heads/main/AFFS-Release.v1.zip)
+
+Or clone the repository:
+
 ```bash
 git clone https://github.com/ExynoxAI/AFFS.git
 cd AFFS
 ```
 
-#### **Step 2: Unzip the Archive**
+### 2. Extract the archive
 
-**On Windows:**
+**Windows (PowerShell):**
+
 ```powershell
-# Right-click the ZIP file → Extract All
-# Or use PowerShell:
-Expand-Archive -Path AFFS-v1.0.0.zip -DestinationPath AFFS
-cd AFFS
+Expand-Archive -Path AFFS-Release.v1.zip -DestinationPath .
 ```
 
-**On Mac/Linux:**
+**macOS / Linux:**
+
 ```bash
-unzip AFFS-v1.0.0.zip
-cd AFFS
+unzip AFFS-Release.v1.zip
 ```
 
-#### **Step 3: Load in Chrome**
+### 3. Load the extension in Chrome
 
-1. **Open Chrome Extensions Page**
-   - Type in address bar: `chrome://extensions/`
-   - Or: Menu → More Tools → Extensions
+1. Open `chrome://extensions/`.
+2. Enable **Developer mode**.
+3. Click **Load unpacked**.
+4. Select the `form-auto-fill-extension` folder.
+5. Pin AFFS from the extensions menu if it is hidden.
 
-2. **Enable Developer Mode**
-   - Toggle the switch in the top-right corner
+> **Do not install the `.crx` file directly.** Current Chrome versions reject self-signed CRX packages with `CRX_REQUIRED_PROOF_MISSING`. Load the extracted folder as an unpacked extension instead. See [Troubleshooting](#troubleshooting).
 
-3. **Load Unpacked**
-   - Click "Load unpacked" button
-   - Navigate to the extracted `form-auto-fill-extension` folder
-   - Select it and click "Open"
+### 4. Open the side panel
 
-4. **Done! 🎉**
-   - The extension is now active in Chrome
-   - Look for the extension icon in the top-right corner
+Click the AFFS toolbar icon. The side panel opens on the right side of the browser.
 
----
+If Chrome still shows an older layout after an update, reload the extension on `chrome://extensions/`, close the side panel, and open it again.
 
-## 🚀 How to Use
+## Usage
 
-### **Automatic Mode (Default)**
-1. Navigate to `http://192.168.1.201:8080/`
-2. The extension **automatically starts** after 2 seconds
-3. Watch the console (F12) for progress
-4. Automation continues until "Completed!" dialog appears
+1. Open the portal in a tab if you want to confirm it is reachable: `http://192.168.10.72:8080/feedback/`.
+2. Open the AFFS side panel.
+3. Select **Mid-term**, **End-term**, or both.
+4. Click **Import CSV** and choose a CSV or TXT file. You can also drag the file onto the Students card.
+5. Review the imported students. Pending and failed students will run; completed students are skipped.
+6. Click **Start**.
+7. Keep the automation tab open. The extension logs in, submits feedback, signs out, and continues automatically.
+8. Click **Stop** to stop after the current step. The current student is left pending so it can be retried.
 
-### **Manual Mode**
-1. Click the extension icon in the top-right corner
-2. Click **"▶ Start"** to manually trigger the script
-3. Click **"⏹ Stop"** to pause execution
-4. Status updates in real-time
+### Dry run
 
-### **Monitor Progress**
-- Open DevTools: **F12**
-- Go to **Console** tab
-- Watch detailed logs:
-  ```
-  HyperDyn / Skandan V Combined Auto-Fill Script Started
-  ✓ Correct URL detected
-  Detected Mid-Term Page. Starting automation...
-  Selected subject: Mathematics
-  Input k:q1: set to 3
-  Form submitted.
-  ```
+Enable **Dry run** to select the first available course and fill the rating fields without submitting. The dry run restores the student statuses after it finishes, so nothing is marked complete.
 
----
+### Status meanings
 
-## 📋 Requirements
+| Status | Meaning |
+| --- | --- |
+| `Idle` | Ready. Import a CSV and start a run. |
+| `Running` | A student is being processed. Keep the automation tab open. |
+| `Stopping` | A stop was requested. The current step is finishing. |
+| `Stopped` | The run was stopped. Pending students can be retried. |
+| `Complete` | All queued students were processed. |
+| `Error` | The run stopped because of a fatal error. Check the activity log. |
 
-- ✓ **Chrome Browser** (v90+)
-- ✓ **Windows/Mac/Linux**
-- ✓ **Target URL**: `http://192.168.1.201:8080/`
-- ✓ **JavaScript Enabled** in Chrome
+### Student statuses
 
----
+| Status | Meaning |
+| --- | --- |
+| `Pending` | Waiting to run. |
+| `Running` | The student is being processed now. |
+| `Done` | Feedback completed, or no feedback was pending. |
+| `Failed` | The student could not be processed. The message explains why. |
+| `Stopped` | The student was interrupted by a stop request. |
 
-## 📁 Project Structure
+## CSV format
 
+The simplest format is one register number per line:
+
+```text
+418IS24026
+418IS24027
+418IS24028
 ```
+
+A standard CSV with a header also works:
+
+```csv
+Register Number
+418IS24026
+418IS24027
+418IS24028
+```
+
+Rules:
+
+- The first non-empty cell in each row is used.
+- A header row such as `Register Number`, `USN`, or `Roll No` is skipped.
+- Duplicate register numbers are skipped.
+- Invalid rows are skipped.
+- The import replaces the current student list.
+- Up to 500 students are imported. The file size limit is 2 MB.
+
+## How it works
+
+1. **Queue building** — The background service worker selects pending and failed students.
+2. **Sign in** — Opens one automation tab and signs in with the register number as both username and password.
+3. **Feedback pages** — Navigates to the mid-term or end-term page and reads the available courses.
+4. **Course selection** — Selects the first available course and waits for the form to update.
+5. **Form filling** — Fills every visible rating field with a weighted random value from 1 to 5, biased toward the lower end.
+6. **Submission** — Clicks submit and waits for the course to leave the dropdown. The portal's `Completed!` dialog is recorded in the activity log.
+7. **Sign out** — Opens the portal logout URL and waits for the login page.
+8. **Next student** — Repeats until the queue is empty or the run is stopped.
+
+Student records and settings are stored in `chrome.storage.local`. Activity logs and the transient run state use `chrome.storage.session`.
+
+## Project structure
+
+```text
 form-auto-fill-extension/
-├── manifest.json          # Chrome extension manifest (MV3)
-├── content.js             # Main auto-fill script
-├── popup.html             # Popup UI with Tailwind CSS
-├── popup.js               # Popup controller logic
-├── background.js          # Background service worker
-├── README.md              # Feature documentation
-└── images/                # (Optional) Extension icons
+├── manifest.json          # Manifest V3 configuration
+├── background.js          # Run queue, tab lifecycle, persistence, logging
+├── content.js             # Portal login, course selection, filling, and submission
+├── constants.js           # Portal URLs, DOM IDs, storage keys, limits
+├── sidepanel.html         # Side panel markup
+├── sidepanel.css          # Browser-theme palette and Material token overrides
+├── sidepanel.js           # Side panel controller (source)
+├── sidepanel.bundle.js    # Built Material Web + side panel runtime
+├── icons/                 # Extension icons (16, 32, 48, 128 px)
+├── README.md              # Extension-specific documentation
+└── THIRD_PARTY_NOTICES.md # Material Web and Lit license notices
+
+build/
+├── package.json           # esbuild build configuration
+├── sidepanel-entry.js     # Bundle entry point
+└── node_modules/          # Build dependencies, not part of the extension
 ```
 
----
+## Configuration
 
-## 🔧 Configuration
+Portal URLs, DOM IDs, storage keys, and limits are defined in `form-auto-fill-extension/constants.js`:
 
-### **Auto-Start Delay**
-Edit `content.js` line ~52:
 ```javascript
-const autoStartDelay = setTimeout(() => {
-  // Change 2000 to desired milliseconds
-}, 2000); // Default: 2 seconds
+const ORIGIN = 'http://192.168.10.72:8080';
+const BASE = `${ORIGIN}/feedback`;
+
+LOGIN_URL: `${BASE}/login.xhtml`,
+MID_URL: `${BASE}/pages/student/mfeedback.xhtml`,
+END_URL: `${BASE}/pages/student/efeedback.xhtml`,
+LOGOUT_URL: `${BASE}/feedback/j_spring_security_logout`,
 ```
 
-### **Form Selectors**
-Customize form element detection in `content.js`:
-```javascript
-const midTermInputs = document.querySelectorAll('input[id^="k:q"]');
-const endSemInputs = document.querySelectorAll('input[id^="k:aq"], input[id^="k:bq"], input[id^="k:cq"]');
-```
+If the portal address changes, update `ORIGIN` in `constants.js` and the host permission and content-script match in `manifest.json`.
 
-### **Random Value Range**
-Modify `biasedRandom()` in `content.js`:
-```javascript
-function biasedRandom() {
-  // Currently returns 1-5 with bias towards lower numbers
-  // Customize the range and probabilities as needed
-}
-```
+### Form selectors
 
----
+The content script uses the portal's current element IDs:
 
-## 🛠️ Troubleshooting
+- Login: `input_email`, `input_password`, `j_idt11`
+- Course dropdown: `k:sel`, `k:sel_input`, `k:sel_panel`, `k:sel_label`
+- Mid-term fields: `k:q*`
+- End-term fields: `k:aq*`, `k:bq*`, `k:cq*`
+- Submit: `k:s2`
 
-### **Extension Not Showing?**
-```powershell
-# 1. Reload the page
-# 2. Check chrome://extensions/ - ensure it's enabled
-# 3. Verify you're on correct URL: 192.168.1.201:8080
-```
+If the portal markup changes, update `IDS` and `PREFIXES` in `constants.js`.
 
-### **Script Not Running?**
-```javascript
-// Open DevTools (F12) → Console
-// Should show: "HyperDyn / Skandan V Combined Auto-Fill Script Loaded"
-// If not, check for JavaScript errors
-```
+### Timing
 
-### **Wrong URL Error?**
-- The extension only works on `http://192.168.1.201:8080/`
-- Ensure you navigate to this exact URL
-- Check the popup - it should show "✓ Ready on correct URL"
+The inter-student delay and other automation timings are controlled by the background and content scripts. The default inter-student delay is 1200 ms. Feedback waits and page-load timeouts are defined near the top of `background.js` and `content.js`.
 
-### **Still Having Issues?**
-1. Open DevTools Console (F12)
-2. Check Service Worker logs: `chrome://extensions/` → Service Worker (under extension name)
-3. Look for error messages
-4. Try refreshing the page
-5. Remove and re-load the extension
+## Development
 
----
+### Build the side panel
 
-## 📊 Technical Details
+The side panel uses real Material Web components. Because Manifest V3 extension pages cannot load remote scripts, Material Web is bundled locally with esbuild.
 
-### **Auto-Fill Logic**
-
-1. **Page Detection**
-   - Checks for Mid-Term input fields (`k:q*`)
-   - Checks for End-Semester input fields (`k:aq*`, `k:bq*`, `k:cq*`)
-
-2. **Subject Selection**
-   - Opens dropdown menu
-   - Selects first available subject
-   - Waits for UI to update
-
-3. **Form Filling**
-   - Finds all input fields with matching selector
-   - Fills each with biased random value (1-5)
-   - Triggers `input` event for validation
-
-4. **Form Submission**
-   - Scrolls to submit button
-   - Clicks the button
-   - Waits for page response
-
-5. **Completion Detection**
-   - Checks for dialog: `#primefacesmessagedlg`
-   - Verifies "Completed!" text is visible
-   - Stops automation on success
-
-### **Timing & Delays**
-- **Action Delay**: 400-900ms between actions
-- **Wait Between Actions**: 600-1200ms
-- **Wait Between Subjects**: 2000-4000ms
-- **Page Load Wait**: 1000-2000ms
-
----
-
-## 🔐 Privacy & Security
-
-- ✓ **No Data Collection**: Extension doesn't collect any user data
-- ✓ **Local Only**: All processing happens locally in the browser
-- ✓ **No Network Calls**: Doesn't send data to external servers
-- ✓ **Open Source**: Full source code visible for inspection
-- ✓ **Permissions Limited**: Only runs on specified URL
-
----
-
-## 📝 License
-
-MIT License - Feel free to use, modify, and distribute
-
----
-
-## 👨‍💻 Developer Credits
-
-**Created by:** [HyperDyn](https://www.hyperdyn.tech)
-**Team:** Skandan V + HyperDyn AI Team
-
-### **Contributors**
-- 🎯 Core Automation Logic: Skandan V
-- 🎨 UI/UX Design: HyperDyn Team
-- 🔧 Engineering & Optimization: HyperDyn Team
-
-### **Special Thanks**
-- Chrome Extension Community
-- Open Source Contributors
-
----
-
-## 🌐 Links
-
-- 🌍 **Website**: [www.hyperdyn.tech](https://www.hyperdyn.tech)
-- 📦 **GitHub**: [ExynoxAI/AFFS](https://github.com/ExynoxAI/AFFS)
-- 📥 **Latest Release**: [v1.0.0](https://github.com/ExynoxAI/AFFS/releases/tag/v1)
-- 📧 **Contact**: [HyperDyn](https://www.hyperdyn.tech)
-
----
-
-## 📢 Version History
-
-### **v1.0.0** - November 2025
-- ✨ Initial Release
-- ⚡ Auto-fill automation for exam forms
-- 🎨 Modern UI with Tailwind CSS
-- 🔄 Auto-start functionality
-- 📝 Comprehensive logging
-- 🛡️ Error handling & retry logic
-
----
-
-## ⚡ Quick Commands
-
-### **Clone Repository**
 ```bash
-git clone https://github.com/ExynoxAI/AFFS.git
-cd AFFS/form-auto-fill-extension
+cd build
+npm install
+npm run build
 ```
 
-### **Load in Chrome**
+The build writes `form-auto-fill-extension/sidepanel.bundle.js`. The bundle includes:
+
+- `@material/web` button, checkbox, list, and linear-progress components
+- Lit (the Material Web runtime)
+- `constants.js`
+- `sidepanel.js`
+
+The source files remain readable; only the bundle is loaded by `sidepanel.html`.
+
+### Reload after changes
+
+1. Edit the source files.
+2. Rebuild the bundle if `sidepanel.js` or the Material imports changed.
+3. Open `chrome://extensions/` and click the reload icon on AFFS.
+4. Close and reopen the side panel.
+
+### Package a release
+
+Zip the `form-auto-fill-extension` folder so it remains the top-level directory inside the archive:
+
 ```powershell
-# Open Chrome extensions
-start "chrome://extensions/"
-
-# Then manually load unpacked
+Compress-Archive -Path form-auto-fill-extension -DestinationPath AFFS-Release.v1.zip -Force
 ```
 
-### **View Logs**
-```javascript
-// In any tab on the target URL, open DevTools (F12)
-// Console will show all automation logs
-```
+### CRX packaging
 
----
+Chrome's **Pack extension** tool creates a signed `.crx` file and a `.pem` private key. Keep the `.pem` file private and out of version control. It is required to sign future updates and must never be shared.
 
-## 🐛 Report Issues
+A self-signed `.crx` cannot be installed directly in current Chrome builds; Chrome returns `CRX_REQUIRED_PROOF_MISSING`. Use the ZIP with **Load unpacked**, publish through the Chrome Web Store, or deploy through enterprise policy.
 
-Found a bug? Have a suggestion?
-- 📝 [Create an Issue](https://github.com/ExynoxAI/AFFS/issues)
-- 💬 [Start a Discussion](https://github.com/ExynoxAI/AFFS/discussions)
-- 📧 Contact: [www.hyperdyn.tech](https://www.hyperdyn.tech)
+## Troubleshooting
 
----
+| Problem | What to check |
+| --- | --- |
+| `CRX_REQUIRED_PROOF_MISSING` | Chrome blocks direct installation of self-signed CRX files. Use **Load unpacked** on the `form-auto-fill-extension` folder. |
+| The portal does not load | Confirm the machine is on the network that can reach `http://192.168.10.72:8080/feedback/`. Try the URL in a normal tab first. |
+| The side panel shows an older UI | Reload AFFS on `chrome://extensions/`, close the side panel, and reopen it. If the extension was loaded from a different folder, remove the old copy and load the updated `form-auto-fill-extension` folder. |
+| Start is disabled | Import a CSV, select at least one feedback type, or click **Reset statuses** if every student is already complete. |
+| Import finds no students | Use one register number per line, or a CSV whose first column contains the register numbers. Check the 2 MB and 500-student limits. |
+| Sign-in is rejected | The username and password must both be the student register number. Confirm the account exists on the portal. |
+| A student fails | Check the activity log for the specific error. The student remains eligible for the next run. |
+| The feedback page is not available | The portal may have no pending feedback for that student, or the session may have expired. The log distinguishes skipped pages from failures. |
+| Sign-out fails | The portal may have changed its logout URL. Check `LOGOUT_URL` in `constants.js`. |
+| The side panel cannot reach the service worker | Reload the extension from `chrome://extensions/`, then reopen the side panel. |
 
-## 📄 Additional Resources
+For deeper diagnostics:
 
-- [Chrome Extension Documentation](https://developer.chrome.com/docs/extensions/)
-- [Manifest V3 Guide](https://developer.chrome.com/docs/extensions/mv3/)
-- [Content Scripts Guide](https://developer.chrome.com/docs/extensions/mv3/content_scripts/)
+1. Open `chrome://extensions/`, locate AFFS, and click **Service worker** to inspect background logs.
+2. Open DevTools on the automation tab to inspect the portal page.
+3. Check the activity log in the side panel for the failing step.
 
----
+## Privacy and security
 
-## 🎯 Roadmap
+- **No data collection** — The extension does not collect personal data.
+- **Local processing** — All automation runs in the browser.
+- **No external requests** — Student lists, credentials, and page contents stay on the machine and the configured portal.
+- **Limited host access** — The content script only matches `http://192.168.10.72:8080/*`.
+- **Local storage** — Student records and settings are stored in `chrome.storage.local`; logs use `chrome.storage.session`.
+- **Open source** — The full source is available in this repository.
 
-Future enhancements:
-- [ ] Settings panel for customization
-- [ ] Multiple URL support
-- [ ] Export/Import configurations
-- [ ] Advanced scheduling options
-- [ ] Chrome Web Store submission
-- [ ] User analytics & statistics
+## Support
 
----
+- **Issues:** [github.com/ExynoxAI/AFFS/issues](https://github.com/ExynoxAI/AFFS/issues)
+- **Discussions:** [github.com/ExynoxAI/AFFS/discussions](https://github.com/ExynoxAI/AFFS/discussions)
+- **Website:** [hyperdyn.in](https://hyperdyn.in)
+- **Email:** [skandanv.is.dev@gmail.com](mailto:skandanv.is.dev@gmail.com)
 
-**Made with ❤️ by [Hyperdyn](https://www.hyperdyn.tech)**
+## License
 
-**Version 1.0.0 | Last Updated: November 2025**
+Released under the MIT License. See [LICENSE](LICENSE) for details.
 
----
+The side panel bundles [Material Web](https://github.com/material-components/material-web) and [Lit](https://github.com/lit/lit), both licensed under the Apache License 2.0. See [THIRD_PARTY_NOTICES.md](form-auto-fill-extension/THIRD_PARTY_NOTICES.md) for details.
 
-## 📞 Support
+## Version history
 
-For issues, questions, or suggestions:
-1. Check the [GitHub Issues](https://github.com/ExynoxAI/AFFS/issues)
-2. Visit [www.hyperdyn.tech](https://www.hyperdyn.tech)
-3. Review the [Troubleshooting](#-troubleshooting) section above
+### v2.0.0
 
-**Happy Automating! 🚀**
+- Chrome side panel replaces the popup
+- Bulk CSV and TXT register-number import
+- Sequential login, feedback submission, and logout for every student
+- Mid-term and end-term modes, plus dry run
+- Per-student progress and an activity log
+- Material Web controls, lists, and progress
+- Browser light/dark theme support through system colors
+- Updated portal URLs for `192.168.10.72:8080`
+
+### v1.0.0
+
+- Initial release
+- Mid-term and end-semester form detection
+- Automatic subject selection and form submission
+- Manual Start and Stop controls
+- Minimal popup interface
+- Detailed console logging
