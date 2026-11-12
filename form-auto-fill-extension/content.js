@@ -1107,18 +1107,44 @@
 
       const courses = getCourseOptions();
       if (courses.length === 0) {
-        // The last submitted subject is gone. The portal shows Completed!
-        // immediately afterward, so only wait briefly for that status.
-        const deadline = Date.now() + 2000;
+        // The submitted subject disappears before the AJAX response repopulates
+        // the remaining list. Wait for the list to return or for the portal's
+        // completion status; do not finish just because it is momentarily
+        // empty during the re-render.
+        const deadline = Date.now() + 15000;
+        let nextCourses = [];
+
         while (Date.now() < deadline && !stopRequested) {
           const statusText = getCompletionDialogText();
           if (/completed!?/i.test(statusText)) {
             completion = statusText;
             break;
           }
-          await sleep(100);
+
+          nextCourses = getCourseOptions();
+          if (nextCourses.length > 0) {
+            break;
+          }
+
+          await sleep(150);
         }
-        break;
+
+        if (stopRequested) {
+          break;
+        }
+
+        if (/completed!?/i.test(completion)) {
+          break;
+        }
+
+        if (nextCourses.length === 0) {
+          throw new Error(
+            'The course list is empty but the portal did not report Completed!'
+          );
+        }
+
+        // The remaining subjects were re-rendered; process the next one.
+        continue;
       }
 
       // The portal removes a subject from the dropdown as soon as it is

@@ -312,6 +312,12 @@ The side panel bundles [Material Web](https://github.com/material-components/mat
 
 ## Version history
 
+### v2.0.1
+
+- Keep processing remaining courses when the dropdown is briefly empty during the portal's AJAX refresh
+- End a feedback mode only when the portal reports `Completed!`
+- Continue from mid-term completion into end-term feedback
+
 ### v2.0.0
 
 - Chrome side panel replaces the popup

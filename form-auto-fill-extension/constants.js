@@ -5,7 +5,7 @@
   const BASE = `${ORIGIN}/feedback`;
 
   globalThis.AFFS = Object.freeze({
-    VERSION: '2.0.0',
+    VERSION: '2.0.1',
     ORIGIN,
     BASE,
     LOGIN_URL: `${BASE}/login.xhtml`,
